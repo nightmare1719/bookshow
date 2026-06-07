@@ -1,0 +1,70 @@
+name: AI Event Platform CI/CD
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+
+    services:
+      # Spin up MongoDB service inside container runner
+      mongodb:
+        image: mongo:6.0
+        ports:
+          - 27017:27017
+
+      # Spin up Redis service inside container runner
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-size: 20
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          cd backend
+          npm ci
+
+      - name: Run Integration Tests
+        run: |
+          cd backend
+          npm test
+        env:
+          MONGODB_URI: mongodb://localhost:27017/ai_event_platform_test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          JWT_SECRET: github-actions-ci-cd-jwt-secret-key-123!
+          JWT_EXPIRES_IN: 1d
+          MOCK_PAYMENT_MODE: true
+
+  docker-build:
+    needs: test-and-lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Backend Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false
+          tags: ai-event-platform-backend:latest
