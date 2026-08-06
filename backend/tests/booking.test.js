@@ -10,14 +10,14 @@ if (originalUri && originalUri.includes('mongodb+srv://')) {
 
 const request = require('supertest');
 const mongoose = require('mongoose');
-const app = require('../src/app');
-const User = require('../src/models/User');
-const Event = require('../src/models/Event');
-const Seat = require('../src/models/Seat');
-const Booking = require('../src/models/Booking');
-const { redis } = require('../src/config/redis');
-const mockDbService = require('../src/services/mockDbService');
-const mockQueueService = require('../src/services/mockQueueService');
+const app = require('../app');
+const User = require('../Model/UserModel');
+const Event = require('../Model/EventModel');
+const Seat = require('../Model/SeatModel');
+const Booking = require('../Model/BookingModel');
+const { redis } = require('../Config/redis');
+const mockDbService = require('../Services/mockDbService');
+const mockQueueService = require('../Services/mockQueueService');
 
 describe('AI Ticket Booking Engine Integration Tests', () => {
   jest.setTimeout(60000);
@@ -54,9 +54,19 @@ describe('AI Ticket Booking Engine Integration Tests', () => {
     try {
       if (mongoose.connection.readyState === 0) {
         await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/ai_event_platform_test', {
-          serverSelectionTimeoutMS: 1500,
-          connectTimeoutMS: 1500
+          serverSelectionTimeoutMS: 10000,
+          connectTimeoutMS: 10000
         });
+      }
+      // Check if transactions are supported
+      try {
+        const session = await mongoose.startSession();
+        session.startTransaction();
+        await session.abortTransaction();
+        session.endSession();
+        global.USE_TRANSACTIONS = true;
+      } catch (txErr) {
+        global.USE_TRANSACTIONS = false;
       }
       // Clean Mongoose collections
       await User.deleteMany({});
@@ -64,7 +74,7 @@ describe('AI Ticket Booking Engine Integration Tests', () => {
       await Seat.deleteMany({});
       await Booking.deleteMany({});
     } catch (err) {
-      console.warn('⚠️ MongoDB is unreachable in tests. Activating Resilient In-Memory Fallback.');
+      console.warn('⚠️ MongoDB is unreachable in tests. Activating Resilient In-Memory Fallback.', err);
       global.USE_IN_MEMORY_FALLBACK = true;
     }
 
